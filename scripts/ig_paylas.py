@@ -3,6 +3,7 @@
 
 Kullanım:
   python scripts/ig_paylas.py <post.png> <metin.txt> [--dal main] [--deneme]
+  python scripts/ig_paylas.py <story_9x16.png> --story   (açıklama/sticker API'de yok)
 
 Adımlar: PNG -> JPEG (Instagram yalnız JPEG kabul eder), bu deponun main
 dalına gorseller/<klasor>/ altına commit + push (ayrı worktree'de), raw.githubusercontent adresi
@@ -112,6 +113,7 @@ def main():
     p.add_argument("--dal", default="main")
     p.add_argument("--deneme", action="store_true")
     p.add_argument("--kontrol", action="store_true", help="yalnız token ve hesap kontrolü")
+    p.add_argument("--story", action="store_true", help="story olarak paylaş (9:16, açıklama yok)")
     a = p.parse_args()
 
     if a.kontrol:
@@ -119,8 +121,8 @@ def main():
         alan = "username" if IG_LOGIN else "username,name"
         print(json.dumps({"ig_user_id": uid, **api(uid, {"fields": alan})}, ensure_ascii=False))
         return
-    if not (a.png and a.metin):
-        p.error("png ve metin gerekli")
+    if not a.png or not (a.metin or a.story):
+        p.error("png ve metin gerekli (--story için yalnız png)")
 
     png = Path(a.png)
     klasor = png.parent.name
@@ -133,8 +135,11 @@ def main():
     url_hazir(url)
 
     uid = ig_user_id()
-    metin = Path(a.metin).read_text(encoding="utf-8").strip()
-    kap = api(f"{uid}/media", {"image_url": url, "caption": metin}, "POST")["id"]
+    if a.story:
+        veri = {"image_url": url, "media_type": "STORIES"}
+    else:
+        veri = {"image_url": url, "caption": Path(a.metin).read_text(encoding="utf-8").strip()}
+    kap = api(f"{uid}/media", veri, "POST")["id"]
     for _ in range(30):
         d = api(kap, {"fields": "status_code"}).get("status_code")
         if d == "FINISHED":
