@@ -50,6 +50,12 @@ def ig_user_id():
         h = s.get("instagram_business_account")
         if h:
             return h["id"]
+    # Sayfasız, işletmeye bağlı IG hesabı: token'ın izin hedefinden bul
+    tok = os.environ["IG_ACCESS_TOKEN"]
+    bilgi = api("debug_token", {"input_token": tok}).get("data", {})
+    for g in bilgi.get("granular_scopes", []):
+        if g.get("scope") == "instagram_content_publish" and g.get("target_ids"):
+            return g["target_ids"][0]
     sys.exit("Token'a bağlı Instagram hesabı bulunamadı (Facebook sayfası yok). "
              "Instagram Login token'ı (IG...) kullanın.")
 
