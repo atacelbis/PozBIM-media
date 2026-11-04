@@ -90,6 +90,10 @@ def push(jpg, hedef_yol, dal):
                     break
             else:
                 sys.exit("push başarısız")
+        # commit SHA'lı adres: raw.githubusercontent dal adresini ~5 dk önbelleğe alır,
+        # aynı yola yeni görsel konunca eski görsel paylaşılabiliyor.
+        return subprocess.run(["git", "-C", str(wt), "rev-parse", "HEAD"], check=True,
+                              capture_output=True, text=True).stdout.strip()
     finally:
         g("worktree", "remove", "--force", str(wt))
 
@@ -130,8 +134,8 @@ def main():
     import tempfile
     jpg = Path(tempfile.mkdtemp(prefix="ig_jpg_")) / yol.name
     jpeg_yap(png, jpg)
-    push(jpg, yol, a.dal)
-    url = f"https://raw.githubusercontent.com/{DEPO}/{a.dal}/{yol.as_posix()}"
+    sha = push(jpg, yol, a.dal)
+    url = f"https://raw.githubusercontent.com/{DEPO}/{sha}/{yol.as_posix()}"
     url_hazir(url)
 
     uid = ig_user_id()
