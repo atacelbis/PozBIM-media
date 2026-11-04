@@ -2,10 +2,10 @@
 """PozBIM Instagram paylaşımı (@poz.bim).
 
 Kullanım:
-  python scripts/ig_paylas.py <post.png> <metin.txt> [--dal medya] [--deneme]
+  python scripts/ig_paylas.py <post.png> <metin.txt> [--dal main] [--deneme]
 
-Adımlar: PNG -> JPEG (Instagram yalnız JPEG kabul eder), bu depoya
-gorseller/<klasor>/ altına commit + push, raw.githubusercontent adresi
+Adımlar: PNG -> JPEG (Instagram yalnız JPEG kabul eder), bu deponun main
+dalına gorseller/<klasor>/ altına commit + push (ayrı worktree'de), raw.githubusercontent adresi
 ile POST /{ig-user-id}/media, konteyner FINISHED olunca /media_publish.
 --deneme: push ve konteyner oluşturur ama yayınlamaz.
 
@@ -67,15 +67,30 @@ def jpeg_yap(png, hedef):
     im.save(hedef, "JPEG", quality=92, optimize=True)
 
 
-def push(dosya, dal):
-    g = lambda *a: subprocess.run(["git", "-C", str(KOK), *a], check=True)
-    g("add", str(dosya))
-    g("commit", "-m", f"Instagram görseli: {dosya.relative_to(KOK)}")
-    for bekle in (0, 2, 4, 8, 16):
-        time.sleep(bekle)
-        if subprocess.run(["git", "-C", str(KOK), "push", "-u", "origin", f"HEAD:{dal}"]).returncode == 0:
-            return
-    sys.exit("push başarısız")
+def push(jpg, hedef_yol, dal):
+    """Görseli origin/<dal> üstüne ayrı bir worktree'de commit edip push eder.
+    Böylece çalışılan daldaki diğer commit'ler hedef dala taşınmaz."""
+    import shutil, tempfile
+    g = lambda *a, **k: subprocess.run(["git", "-C", str(KOK), *a], check=True, **k)
+    g("fetch", "-q", "origin", dal)
+    wt = Path(tempfile.mkdtemp(prefix="ig_wt_"))
+    g("worktree", "add", "-q", "--detach", str(wt), f"origin/{dal}")
+    try:
+        w = lambda *a: subprocess.run(["git", "-C", str(wt), *a], check=True)
+        hedef = wt / hedef_yol
+        hedef.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(jpg, hedef)
+        w("add", str(hedef_yol))
+        if subprocess.run(["git", "-C", str(wt), "diff", "--cached", "--quiet"]).returncode != 0:
+            w("commit", "-q", "-m", f"Instagram görseli: {hedef_yol}")
+            for bekle in (0, 2, 4, 8, 16):
+                time.sleep(bekle)
+                if subprocess.run(["git", "-C", str(wt), "push", "origin", f"HEAD:{dal}"]).returncode == 0:
+                    break
+            else:
+                sys.exit("push başarısız")
+    finally:
+        g("worktree", "remove", "--force", str(wt))
 
 
 def url_hazir(url):
@@ -94,7 +109,7 @@ def main():
     p = argparse.ArgumentParser()
     p.add_argument("png", nargs="?")
     p.add_argument("metin", nargs="?")
-    p.add_argument("--dal", default="medya")
+    p.add_argument("--dal", default="main")
     p.add_argument("--deneme", action="store_true")
     p.add_argument("--kontrol", action="store_true", help="yalnız token ve hesap kontrolü")
     a = p.parse_args()
@@ -109,10 +124,12 @@ def main():
 
     png = Path(a.png)
     klasor = png.parent.name
-    jpg = KOK / "gorseller" / klasor / (png.stem + ".jpg")
+    yol = Path("gorseller") / klasor / (png.stem + ".jpg")
+    import tempfile
+    jpg = Path(tempfile.mkdtemp(prefix="ig_jpg_")) / yol.name
     jpeg_yap(png, jpg)
-    push(jpg, a.dal)
-    url = f"https://raw.githubusercontent.com/{DEPO}/{a.dal}/{jpg.relative_to(KOK).as_posix()}"
+    push(jpg, yol, a.dal)
+    url = f"https://raw.githubusercontent.com/{DEPO}/{a.dal}/{yol.as_posix()}"
     url_hazir(url)
 
     uid = ig_user_id()
